@@ -56,6 +56,14 @@
             gap: 20px;
         }
 
+        .header-left {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            margin-bottom: 12px;
+        }
+
         .header-title h1 {
             font-size: 20px;
             font-weight: 600;
@@ -68,12 +76,36 @@
             color: var(--text-muted);
         }
 
+        /* ปุ่ม Workspace มุมบนขวา */
+        .btn-workspace {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #ffffff;
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            padding: 8px 16px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 500;
+            text-decoration: none;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+            transition: all 0.2s ease;
+        }
+
+        .btn-workspace:hover {
+            background: var(--bg-body);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
         /* ส่วนเลือกช่วงวันที่ */
         .filter-container {
             display: flex;
             gap: 12px;
             align-items: flex-end;
             flex-wrap: wrap;
+            width: 100%;
         }
 
         .filter-section {
@@ -466,11 +498,17 @@
 </head>
 <body>
 
-    <!-- Header พร้อมระบบเลือกช่วง วัน เดือน ปี -->
+    <!-- Header พร้อมระบบเลือกช่วง วัน เดือน ปี และปุ่ม Workspace -->
     <header>
-        <div class="header-title">
-            <h1>ระบบเฝ้าระวังผู้ป่วยจากภาวะ PM2.5</h1>
-            <p>โรงพยาบาล (Hospital Surveillance Dashboard)</p>
+        <div class="header-left">
+            <div class="header-title">
+                <h1>ระบบเฝ้าระวังผู้ป่วยจากภาวะ PM2.5</h1>
+                <p>โรงพยาบาล (Hospital Surveillance Dashboard)</p>
+            </div>
+            <!-- ปุ่ม Workspace มุมบนขวา -->
+            <a href="https://praetinee.github.io/JanWorkspace/" target="_blank" class="btn-workspace">
+                <i class="fa-solid fa-house"></i> Workspace
+            </a>
         </div>
         
         <div class="filter-container">
@@ -571,7 +609,6 @@
                     <span class="kpi-value" id="kpiTotalPatients">342</span>
                     <span class="kpi-unit">ราย</span>
                 </div>
-                <!-- เปลี่ยนข้อความให้ชัดเจน: เทียบกับช่วงเวลาเท่ากันก่อนหน้า -->
                 <div class="kpi-trend trend-up" id="kpiTrendText">
                     <i class="fa-solid fa-arrow-up"></i> +12.5% เทียบกับช่วง 31 วันก่อนหน้า
                 </div>
@@ -851,7 +888,6 @@
             const eMonth = document.getElementById('endMonth').selectedIndex + 1;
             const eYear = parseInt(document.getElementById('endYear').value);
 
-            // คำนวณจำนวนวันคร่าวๆ จากช่วงวันที่เลือก
             const daysDiff = Math.abs((eYear * 365 + eMonth * 30 + eDay) - (sYear * 365 + sMonth * 30 + sDay)) + 1;
 
             const sMonthText = document.getElementById('startMonth').options[document.getElementById('startMonth').selectedIndex].text;
@@ -860,7 +896,6 @@
             currentRangeLabel = `${sDay} ${sMonthText} ${sYear} - ${eDay} ${eMonthText} ${eYear} (${daysDiff} วัน)`;
             currentLabels = ['ช่วงต้น', 'ช่วงสัปดาห์ที่ 1', 'ช่วงสัปดาห์ที่ 2', 'ช่วงสัปดาห์ที่ 3', 'ช่วงปลาย'];
             
-            // อัปเดตข้อความ Trend เปรียบเทียบให้ชัดเจนตามระยะเวลาที่เลือก
             document.getElementById('kpiTrendText').innerHTML = `<i class="fa-solid fa-arrow-up"></i> +12.5% เทียบกับช่วง ${daysDiff} วันก่อนหน้า`;
 
             Object.keys(matrixData).forEach(dKey => {
