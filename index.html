@@ -1008,103 +1008,99 @@
 
         function updateChartData() {
             if(filteredData.length === 0) return;
-
             document.getElementById('activeFilterLabel').innerText = `แสดงผล: [${diseaseNames[currentDisease]}] × [${popNames[currentPop]}] | ช่วงเวลา: ${currentRangeLabel}`;
 
-            let labels = [];
-            let pmData = [];
-            let patientData = [];
+            // 1. ประเมินสเกลเวลา (วัน, สัปดาห์, เดือน)
+            const daysDiff = Math.ceil((filteredData[filteredData.length-1].timestamp - filteredData[0].timestamp) / (1000 * 3600 * 24));
+            let mode = 'day';
+            if(daysDiff > 365) mode = 'month';
+            else if(daysDiff > 31) mode = 'week';
 
+            // 2. จัดกลุ่มข้อมูล (Grouping)
+            let grouped = {};
+            const monthNames = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+            
             filteredData.forEach(row => {
-                labels.push(row.Date);
-                pmData.push(row.PM25 || 0);
+                let d = new Date(row.timestamp);
+                let key = '';
                 
-                // หาค่าจำนวนผู้ป่วยตาม Filter
-                let count = 0;
-                if(currentDisease === 'all') {
-                    // รวมทุกโรคตามประชากรที่เลือก
-                    count = (row[`Resp_${currentPop}`] || 0) + 
-                            (row[`Eye_${currentPop}`] || 0) + 
-                            (row[`Cardio_${currentPop}`] || 0) + 
-                            (row[`Skin_${currentPop}`] || 0);
+                if (mode === 'month') {
+                    key = `${monthNames[d.getMonth()]} ${d.getFullYear() + 543}`;
+                } else if (mode === 'week') {
+                    // จัดกลุ่มทีละ 7 วัน
+                    let diffFromStart = Math.floor((row.timestamp - filteredData[0].timestamp) / (1000 * 3600 * 24));
+                    let weekNum = Math.floor(diffFromStart / 7) + 1;
+                    key = `สัปดาห์ที่ ${weekNum} (${monthNames[d.getMonth()]})`;
                 } else {
-                    count = row[`${currentDisease}_${currentPop}`] || 0;
+                    key = row.Date;
                 }
-                patientData.push(count);
+
+                if(!grouped[key]) grouped[key] = { pmSum: 0, pmCount: 0, patSum: 0 };
+                grouped[key].pmSum += row.PM25;
+                grouped[key].pmCount += 1;
+                
+                let count = currentDisease === 'all' 
+                    ? (row[`Resp_${currentPop}`] || 0) + (row[`Eye_${currentPop}`] || 0) + (row[`Cardio_${currentPop}`] || 0) + (row[`Skin_${currentPop}`] || 0)
+                    : (row[`${currentDisease}_${currentPop}`] || 0);
+                
+                grouped[key].patSum += count;
             });
 
-            // คำนวณ Rate Ratio (เทียบวันฝุ่นสูง vs ฝุ่นต่ำ)
-            let highPM_Pats = 0, highPM_Days = 0;
-            let lowPM_Pats = 0, lowPM_Days = 0;
-            const threshold = 37.5; // มาตรฐาน PM2.5 ใหม่ของไทย
+            let labels = Object.keys(grouped);
+            let pmData = labels.map(k => (grouped[k].pmSum / grouped[k].pmCount).toFixed(1)); // PM2.5 ใช้ค่าเฉลี่ย
+            let patientData = labels.map(k => grouped[k].patSum); // ผู้ป่วยใช้ผลรวม
 
-            for(let i=0; i<pmData.length; i++) {
-                if(pmData[i] > threshold) {
-                    highPM_Pats += patientData[i];
-                    highPM_Days++;
-                } else {
-                    lowPM_Pats += patientData[i];
-                    lowPM_Days++;
-                }
-            }
+            // 3. คำนวณ Rate Ratio (จากข้อมูลรายวันดิบ เพื่อความแม่นยำ)
+            let highPats = 0, highDays = 0, lowPats = 0, lowDays = 0;
+            filteredData.forEach(row => {
+                let pCount = currentDisease === 'all' 
+                    ? (row[`Resp_${currentPop}`]||0) + (row[`Eye_${currentPop}`]||0) + (row[`Cardio_${currentPop}`]||0) + (row[`Skin_${currentPop}`]||0)
+                    : (row[`${currentDisease}_${currentPop}`]||0);
+                
+                if(row.PM25 > 37.5) { highPats += pCount; highDays++; } 
+                else { lowPats += pCount; lowDays++; }
+            });
 
-            let rateHigh = highPM_Days > 0 ? highPM_Pats / highPM_Days : 0;
-            let rateLow = lowPM_Days > 0 ? lowPM_Pats / lowPM_Days : 0;
+            let rHigh = highDays > 0 ? highPats / highDays : 0;
+            let rLow = lowDays > 0 ? lowPats / lowDays : 0;
             
-            let irrText = "";
-            let riskLevel = "low";
+            let irrText = (rLow === 0 && rHigh === 0) ? "ไม่มีข้อมูลผู้ป่วยในช่วงเวลานี้" :
+                          (rLow === 0 && rHigh > 0) ? `อัตราผู้ป่วย ${rHigh.toFixed(1)} ครั้ง/วัน (พบเฉพาะวันฝุ่นเกินเกณฑ์)` :
+                          (rHigh === 0) ? `ไม่พบผู้ป่วยในวันฝุ่นเกินเกณฑ์` :
+                          `ความเสี่ยง (Rate Ratio) = ${(rHigh/rLow).toFixed(2)} เท่า เมื่อ PM2.5 เกิน 37.5 µg/m³`;
 
-            if (rateLow === 0 && rateHigh === 0) {
-                irrText = "ไม่มีข้อมูลผู้ป่วยในช่วงเวลานี้";
-            } else if (rateLow === 0 && rateHigh > 0) {
-                irrText = `อัตราผู้ป่วย ${rateHigh.toFixed(1)} ครั้ง/วัน (พบเฉพาะวันฝุ่นเกินเกณฑ์)`;
-                riskLevel = "high";
-            } else if (rateHigh === 0) {
-                irrText = `ไม่พบผู้ป่วยในวันฝุ่นเกินเกณฑ์`;
-            } else {
-                let irr = (rateHigh / rateLow).toFixed(2);
-                irrText = `อัตราความเสี่ยงสัมพัทธ์ (Rate Ratio) = ${irr} เท่า เมื่อ PM2.5 เกิน 37.5 µg/m³`;
-                if(irr > 1.5) riskLevel = "high";
-                else if(irr > 1.1) riskLevel = "med";
-            }
-
-            // อัปเดต UI กล่อง Insight
+            let badgeEl = document.getElementById('insightBadge');
+            if(rLow > 0 && rHigh/rLow > 1.5) { badgeEl.className = 'risk-badge risk-high'; badgeEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> สูง`; }
+            else if(rLow > 0 && rHigh/rLow > 1.1) { badgeEl.className = 'risk-badge risk-med'; badgeEl.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> ปานกลาง`; }
+            else { badgeEl.className = 'risk-badge risk-low'; badgeEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> ต่ำ`; }
             document.getElementById('insightText').innerText = irrText;
-            const badgeEl = document.getElementById('insightBadge');
-            
-            if(riskLevel === 'high') {
-                badgeEl.className = 'risk-badge risk-high';
-                badgeEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ความสัมพันธ์: สูง`;
-            } else if(riskLevel === 'med') {
-                badgeEl.className = 'risk-badge risk-med';
-                badgeEl.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> ความสัมพันธ์: ปานกลาง`;
-            } else {
-                badgeEl.className = 'risk-badge risk-low';
-                badgeEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> ความสัมพันธ์: ต่ำ/ไม่มีนัยสำคัญ`;
-            }
 
-            // วาดกราฟ
+            // 4. อัปเดตกราฟ (ถมพื้นที่สีเทาให้ PM2.5)
             pmPatientChart.data.labels = labels;
             pmPatientChart.data.datasets = [
-                {
-                    label: 'ค่าเฉลี่ย PM2.5 (µg/m³)',
-                    data: pmData,
-                    borderColor: '#f59e0b',
-                    backgroundColor: '#f59e0b',
-                    yAxisID: 'y1',
-                    tension: 0.3,
-                    pointRadius: 3,
-                    borderDash: [5, 5]
-                },
                 {
                     label: `ผู้ป่วย [${diseaseNames[currentDisease]}]`,
                     data: patientData,
                     borderColor: colors[currentDisease],
-                    backgroundColor: colors[currentDisease] + '15',
-                    fill: true,
+                    backgroundColor: colors[currentDisease],
+                    type: 'line',
                     yAxisID: 'y',
                     tension: 0.3,
-                    pointRadius: 3
+                    pointRadius: 4,
+                    borderWidth: 3,
+                    order: 1 // ให้อยู่ด้านหน้าสุด
+                },
+                {
+                    label: 'ค่าเฉลี่ย PM2.5 (µg/m³)',
+                    data: pmData,
+                    borderColor: '#9ca3af', // สีเทา
+                    backgroundColor: 'rgba(156, 163, 175, 0.4)', // ถมพื้นที่สีเทาโปร่งแสง
+                    fill: true, // เปิดการถมพื้นที่
+                    type: 'line',
+                    yAxisID: 'y1',
+                    tension: 0.4,
+                    pointRadius: 0, // ซ่อนจุดให้ดูสมูทเป็นก้อนมวล
+                    order: 2 // ให้อยู่ด้านหลัง
                 }
             ];
             pmPatientChart.update();
