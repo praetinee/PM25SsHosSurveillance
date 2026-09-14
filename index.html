@@ -76,7 +76,7 @@
             color: var(--text-muted);
         }
 
-        /* ปุ่ม Workspace มุมบนขวา */
+        /* ปุ่ม Workspace */
         .btn-workspace {
             display: inline-flex;
             align-items: center;
@@ -103,7 +103,6 @@
             stroke-width: 2px;
         }
 
-        /* ส่วนเลือกช่วงวันที่ */
         .filter-container {
             display: flex;
             gap: 12px;
@@ -172,7 +171,6 @@
             background: #0369a1;
         }
 
-        /* Layout Grid สำหรับ Cards ด้านบน */
         .kpi-main-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -252,14 +250,7 @@
             margin-top: auto;
         }
 
-        .kpi-value {
-            font-size: 30px;
-            font-weight: 600;
-            color: var(--text-main);
-            line-height: 1.1;
-        }
-
-        .kpi-value-main {
+        .kpi-value, .kpi-value-main {
             font-size: 28px;
             font-weight: 600;
             color: var(--text-main);
@@ -280,17 +271,6 @@
             margin-left: 4px;
         }
 
-        .kpi-trend {
-            font-size: 12px;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            font-weight: 500;
-        }
-
-        .trend-up { color: var(--danger); }
-        .trend-down { color: var(--success); }
-
         .section-heading {
             font-size: 15px;
             font-weight: 600;
@@ -301,7 +281,6 @@
             gap: 8px;
         }
 
-        /* Micro-Infographic / Insight Highlight Box เหนือกราฟ */
         .insight-box {
             background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
             border: 1px solid #bae6fd;
@@ -358,7 +337,6 @@
         .risk-med { background: #fef3c7; color: #92400e; }
         .risk-low { background: #d1fae5; color: #065f46; }
 
-        /* General Card & Chart */
         .card {
             background: var(--bg-card);
             border-radius: 16px;
@@ -389,7 +367,6 @@
             font-weight: 500;
         }
 
-        /* ระบบตัวกรองคู่ (Matrix Filters) ในกราฟ */
         .chart-filter-container {
             display: flex;
             flex-direction: column;
@@ -444,7 +421,6 @@
             width: 100%;
         }
 
-        /* ICD-10 Secondary Codes Section */
         .codes-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -498,18 +474,44 @@
             font-size: 22px;
             font-weight: 600;
         }
+        
+        #loadingOverlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .spinner {
+            border: 4px solid var(--border-color);
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
-    <!-- Header พร้อมระบบเลือกช่วง วัน เดือน ปี และปุ่ม Workspace -->
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay">
+        <div class="spinner"></div>
+        <p style="font-weight: 600; color: var(--primary);">กำลังโหลดข้อมูลจากฐานข้อมูล...</p>
+    </div>
+
+    <!-- Header -->
     <header>
         <div class="header-left">
             <div class="header-title">
                 <h1>ระบบเฝ้าระวังผู้ป่วยจากภาวะ PM2.5</h1>
                 <p>โรงพยาบาล (Hospital Surveillance Dashboard)</p>
             </div>
-            <!-- ปุ่ม Workspace พร้อม SVG รูปบ้านแบบ Outline ตามต้นฉบับ -->
             <a href="https://praetinee.github.io/JanWorkspace/" target="_blank" class="btn-workspace">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
@@ -525,20 +527,15 @@
                 <div class="filter-group">
                     <label>วัน</label>
                     <select id="startDay">
-                        <script>
-                            for(let i=1; i<=31; i++) {
-                                let sel = (i === 1) ? 'selected' : '';
-                                document.write(`<option value="${i}" ${sel}>${i}</option>`);
-                            }
-                        </script>
+                        <script>for(let i=1; i<=31; i++) document.write(`<option value="${i}" ${i===1?'selected':''}>${i}</option>`);</script>
                     </select>
                 </div>
                 <div class="filter-group">
                     <label>เดือน</label>
                     <select id="startMonth">
-                        <option value="1">มกราคม</option>
+                        <option value="1" selected>มกราคม</option>
                         <option value="2">กุมภาพันธ์</option>
-                        <option value="3" selected>มีนาคม</option>
+                        <option value="3">มีนาคม</option>
                         <option value="4">เมษายน</option>
                         <option value="5">พฤษภาคม</option>
                         <option value="6">มิถุนายน</option>
@@ -553,9 +550,12 @@
                 <div class="filter-group">
                     <label>ปี พ.ศ.</label>
                     <select id="startYear">
-                        <option value="2569" selected>2569</option>
+                        <option value="2569">2569</option>
                         <option value="2568">2568</option>
                         <option value="2567">2567</option>
+                        <option value="2566">2566</option>
+                        <option value="2565">2565</option>
+                        <option value="2564" selected>2564</option>
                     </select>
                 </div>
             </div>
@@ -565,12 +565,7 @@
                 <div class="filter-group">
                     <label>วัน</label>
                     <select id="endDay">
-                        <script>
-                            for(let i=1; i<=31; i++) {
-                                let sel = (i === 31) ? 'selected' : '';
-                                document.write(`<option value="${i}" ${sel}>${i}</option>`);
-                            }
-                        </script>
+                        <script>for(let i=1; i<=31; i++) document.write(`<option value="${i}" ${i===31?'selected':''}>${i}</option>`);</script>
                     </select>
                 </div>
                 <div class="filter-group">
@@ -578,7 +573,7 @@
                     <select id="endMonth">
                         <option value="1">มกราคม</option>
                         <option value="2">กุมภาพันธ์</option>
-                        <option value="3" selected>มีนาคม</option>
+                        <option value="3">มีนาคม</option>
                         <option value="4">เมษายน</option>
                         <option value="5">พฤษภาคม</option>
                         <option value="6">มิถุนายน</option>
@@ -587,7 +582,7 @@
                         <option value="9">กันยายน</option>
                         <option value="10">ตุลาคม</option>
                         <option value="11">พฤศจิกายน</option>
-                        <option value="12">ธันวาคม</option>
+                        <option value="12" selected>ธันวาคม</option>
                     </select>
                 </div>
                 <div class="filter-group">
@@ -596,12 +591,15 @@
                         <option value="2569" selected>2569</option>
                         <option value="2568">2568</option>
                         <option value="2567">2567</option>
+                        <option value="2566">2566</option>
+                        <option value="2565">2565</option>
+                        <option value="2564">2564</option>
                     </select>
                 </div>
             </div>
 
             <button class="btn-filter" onclick="applyDateFilter()">
-                <i class="fa-solid fa-filter"></i> ค้นหา
+                <i class="fa-solid fa-filter"></i> ดึงข้อมูล
             </button>
         </div>
     </header>
@@ -610,15 +608,15 @@
     <div class="kpi-main-grid">
         <div class="kpi-card alert">
             <div>
-                <div class="kpi-title">ผู้ป่วยรวมทุกกลุ่มโรค</div>
+                <div class="kpi-title">ผู้ป่วยรวมทุกกลุ่มโรค (ช่วงเวลาที่เลือก)</div>
             </div>
             <div class="kpi-value-row">
                 <div>
-                    <span class="kpi-value" id="kpiTotalPatients">342</span>
-                    <span class="kpi-unit">ราย</span>
+                    <span class="kpi-value" id="kpiTotalPatients">-</span>
+                    <span class="kpi-unit">ครั้ง (VN)</span>
                 </div>
-                <div class="kpi-trend trend-up" id="kpiTrendText">
-                    <i class="fa-solid fa-arrow-up"></i> +12.5% เทียบกับช่วง 31 วันก่อนหน้า
+                <div class="kpi-trend trend-up" id="kpiTrendText" style="color:var(--text-muted);">
+                    อ้างอิงข้อมูลจริงจากระบบ
                 </div>
             </div>
         </div>
@@ -628,17 +626,17 @@
             </div>
             <div class="kpi-value-row">
                 <div>
-                    <span class="kpi-value-main">ทางเดินหายใจ</span>
+                    <span class="kpi-value-main" id="kpiTopDisease">-</span>
                 </div>
-                <div class="kpi-trend text-muted" style="font-size: 13px;">
-                    185 ราย (54%)
+                <div class="kpi-trend text-muted" style="font-size: 13px;" id="kpiTopDiseaseCount">
+                    - ครั้ง
                 </div>
             </div>
         </div>
     </div>
 
     <!-- 4 Disease Groups -->
-    <div class="section-heading"><i class="fa-solid fa-stethoscope" style="color: var(--primary);"></i> จำแนกตาม 4 กลุ่มโรคหลัก</div>
+    <div class="section-heading"><i class="fa-solid fa-stethoscope" style="color: var(--primary);"></i> จำแนกตาม 4 กลุ่มโรคหลัก (สรุปตามช่วงเวลา)</div>
     <div class="disease-grid">
         <div class="kpi-card resp">
             <div>
@@ -647,10 +645,9 @@
             </div>
             <div class="kpi-value-row">
                 <div>
-                    <span class="kpi-value-small">185</span>
-                    <span class="kpi-unit">ราย</span>
+                    <span class="kpi-value-small" id="sumResp">-</span>
+                    <span class="kpi-unit">ครั้ง</span>
                 </div>
-                <div class="kpi-trend trend-up"><i class="fa-solid fa-arrow-up"></i> +15%</div>
             </div>
         </div>
         <div class="kpi-card eye">
@@ -660,10 +657,9 @@
             </div>
             <div class="kpi-value-row">
                 <div>
-                    <span class="kpi-value-small">72</span>
-                    <span class="kpi-unit">ราย</span>
+                    <span class="kpi-value-small" id="sumEye">-</span>
+                    <span class="kpi-unit">ครั้ง</span>
                 </div>
-                <div class="kpi-trend trend-up"><i class="fa-solid fa-arrow-up"></i> +8%</div>
             </div>
         </div>
         <div class="kpi-card cardio">
@@ -673,10 +669,9 @@
             </div>
             <div class="kpi-value-row">
                 <div>
-                    <span class="kpi-value-small">56</span>
-                    <span class="kpi-unit">ราย</span>
+                    <span class="kpi-value-small" id="sumCardio">-</span>
+                    <span class="kpi-unit">ครั้ง</span>
                 </div>
-                <div class="kpi-trend trend-up"><i class="fa-solid fa-arrow-up"></i> +5%</div>
             </div>
         </div>
         <div class="kpi-card skin">
@@ -686,20 +681,19 @@
             </div>
             <div class="kpi-value-row">
                 <div>
-                    <span class="kpi-value-small">29</span>
-                    <span class="kpi-unit">ราย</span>
+                    <span class="kpi-value-small" id="sumSkin">-</span>
+                    <span class="kpi-unit">ครั้ง</span>
                 </div>
-                <div class="kpi-trend trend-down"><i class="fa-solid fa-arrow-down"></i> -2%</div>
             </div>
         </div>
     </div>
 
-    <!-- Chart with Interactive Dual Filters & Poisson Model Insights -->
+    <!-- Chart -->
     <div class="card">
         <div class="card-header">
             <div class="card-title-box">
-                <div class="card-title">เปรียบเทียบระดับ PM2.5 กับแนวโน้มจำนวนผู้ป่วย</div>
-                <p id="activeFilterLabel">แสดงผล: ผู้ป่วยรวมทุกกลุ่มโรค (ทุกประชากร) | ช่วงเวลา: 1 มีนาคม 2569 - 31 มีนาคม 2569</p>
+                <div class="card-title">เปรียบเทียบระดับ PM2.5 กับแนวโน้มจำนวนผู้ป่วยรายวัน</div>
+                <p id="activeFilterLabel">แสดงผล: โหลดข้อมูล...</p>
             </div>
             
             <div class="chart-filter-container">
@@ -707,36 +701,36 @@
                     <div class="filter-group-box">
                         <span class="filter-group-label">กลุ่มโรค:</span>
                         <button class="chart-tab active" data-disease="all" onclick="setDiseaseFilter('all', this)">ทุกโรค</button>
-                        <button class="chart-tab" data-disease="resp" onclick="setDiseaseFilter('resp', this)">ทางเดินหายใจ</button>
-                        <button class="chart-tab" data-disease="eye" onclick="setDiseaseFilter('eye', this)">ตาอักเสบ</button>
-                        <button class="chart-tab" data-disease="cardio" onclick="setDiseaseFilter('cardio', this)">หัวใจฯ</button>
-                        <button class="chart-tab" data-disease="skin" onclick="setDiseaseFilter('skin', this)">ผิวหนัง</button>
+                        <button class="chart-tab" data-disease="Resp" onclick="setDiseaseFilter('Resp', this)">ทางเดินหายใจ</button>
+                        <button class="chart-tab" data-disease="Eye" onclick="setDiseaseFilter('Eye', this)">ตาอักเสบ</button>
+                        <button class="chart-tab" data-disease="Cardio" onclick="setDiseaseFilter('Cardio', this)">หัวใจฯ</button>
+                        <button class="chart-tab" data-disease="Skin" onclick="setDiseaseFilter('Skin', this)">ผิวหนัง</button>
                     </div>
                 </div>
                 <div class="chart-filter-groups">
                     <div class="filter-group-box">
                         <span class="filter-group-label">ประชากร:</span>
-                        <button class="chart-tab active" data-pop="all" onclick="setPopFilter('all', this)">ทุกกลุ่ม</button>
-                        <button class="chart-tab" data-pop="general" onclick="setPopFilter('general', this)">คนทั่วไป</button>
-                        <button class="chart-tab" data-pop="child" onclick="setPopFilter('child', this)">เด็ก (<5ปี)</button>
-                        <button class="chart-tab" data-pop="elderly" onclick="setPopFilter('elderly', this)">ผู้สูงอายุ</button>
-                        <button class="chart-tab" data-pop="pregnant" onclick="setPopFilter('pregnant', this)">คนท้อง</button>
+                        <button class="chart-tab active" data-pop="All" onclick="setPopFilter('All', this)">ทุกกลุ่ม</button>
+                        <button class="chart-tab" data-pop="Gen" onclick="setPopFilter('Gen', this)">คนทั่วไป</button>
+                        <button class="chart-tab" data-pop="Child" onclick="setPopFilter('Child', this)">เด็ก (<5ปี)</button>
+                        <button class="chart-tab" data-pop="Elder" onclick="setPopFilter('Elder', this)">ผู้สูงอายุ</button>
+                        <button class="chart-tab" data-pop="Preg" onclick="setPopFilter('Preg', this)">คนท้อง</button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Micro-Infographic Insight Box (ประเมินจากโมเดลปัวซง) -->
+        <!-- Micro-Infographic Insight Box -->
         <div class="insight-box" id="insightBox">
             <div class="insight-left">
                 <div class="insight-icon"><i class="fa-solid fa-chart-line"></i></div>
                 <div class="insight-content">
-                    <h4>การประเมินความสัมพันธ์ (Poisson Regression Model)</h4>
-                    <p id="insightText">อัตราความเสี่ยงสัมพัทธ์ (IRR) = 1.42 เมื่อ PM2.5 เกินมาตรฐาน คาดการณ์ผู้ป่วยเฉลี่ย 57 ราย/สัปดาห์</p>
+                    <h4>การประเมินความสัมพันธ์ (Rate Ratio)</h4>
+                    <p id="insightText">วิเคราะห์เทียบช่วง PM2.5 เกินมาตรฐาน (37.5 µg/m³)</p>
                 </div>
             </div>
             <div>
-                <span class="risk-badge risk-high" id="insightBadge"><i class="fa-solid fa-triangle-exclamation"></i> ระดับความเสี่ยง: สูง</span>
+                <span class="risk-badge risk-low" id="insightBadge"><i class="fa-solid fa-circle-check"></i> กำลังประมวลผล...</span>
             </div>
         </div>
 
@@ -748,131 +742,86 @@
     <!-- Secondary Diagnosis -->
     <div class="card" style="margin-bottom: 0;">
         <div class="card-header">
-            <div class="card-title">การวินิจฉัยร่วม / ปัจจัยทางสิ่งแวดล้อมและอาชีพ (Secondary Diagnosis)</div>
+            <div class="card-title">การวินิจฉัยร่วม / ปัจจัยทางสิ่งแวดล้อมและอาชีพ (ในช่วงเวลาที่เลือก)</div>
         </div>
         <div class="codes-grid">
             <div class="code-card">
                 <span class="code-tag">Y97</span>
                 <div class="code-name">มลพิษทางอากาศ (Environmental Pollution)</div>
-                <div class="code-value">210 <span style="font-size: 14px; font-weight: normal; color: var(--text-muted);">เคส</span></div>
+                <div class="code-value"><span id="sumY97">-</span> <span style="font-size: 14px; font-weight: normal; color: var(--text-muted);">ครั้ง</span></div>
             </div>
             <div class="code-card">
                 <span class="code-tag">Z58.1</span>
                 <div class="code-name">การสัมผัสมลพิษทางอากาศ ณ ที่พักอาศัย</div>
-                <div class="code-value">98 <span style="font-size: 14px; font-weight: normal; color: var(--text-muted);">เคส</span></div>
+                <div class="code-value"><span id="sumZ581">-</span> <span style="font-size: 14px; font-weight: normal; color: var(--text-muted);">ครั้ง</span></div>
             </div>
             <div class="code-card">
                 <span class="code-tag">Y96</span>
                 <div class="code-name">สภาพแวดล้อมในการทำงาน (Work-related)</div>
-                <div class="code-value">34 <span style="font-size: 14px; font-weight: normal; color: var(--text-muted);">เคส</span></div>
+                <div class="code-value"><span id="sumY96">-</span> <span style="font-size: 14px; font-weight: normal; color: var(--text-muted);">ครั้ง</span></div>
             </div>
         </div>
     </div>
 
-    <!-- JavaScript สำหรับระบบคำนวณและอัปเดตข้อความเปรียบเทียบตามช่วงวันที่ -->
     <script>
+        const API_URL = "https://script.google.com/macros/s/AKfycbwadrVlOYImVi6XSTOUL0-g1VqIyy2zH88cmjZYrKQ1eopUlo2ELYioeMY_cd2ZHolaYQ/exec";
+        
+        let rawData = [];
+        let filteredData = [];
+        
+        let currentDisease = 'all'; 
+        let currentPop = 'All';
+        let currentRangeLabel = '';
+
+        const diseaseNames = { all: 'ทุกโรค', Resp: 'ทางเดินหายใจ', Eye: 'ตาอักเสบ', Cardio: 'หัวใจและหลอดเลือด', Skin: 'ผิวหนังอักเสบ' };
+        const popNames = { All: 'ทุกกลุ่มประชากร', Gen: 'ประชาชนทั่วไป', Child: 'เด็ก (<5 ปี)', Elder: 'ผู้สูงอายุ (60 ปี+)', Preg: 'หญิงตั้งครรภ์' };
+        const colors = { all: '#0284c7', Resp: '#0ea5e9', Eye: '#f59e0b', Cardio: '#ef4444', Skin: '#10b981' };
+
         const ctx = document.getElementById('pmPatientChart').getContext('2d');
-        
-        let currentDisease = 'all';
-        let currentPop = 'all';
-        let currentRangeLabel = '1 มีนาคม 2569 - 31 มีนาคม 2569 (31 วัน)';
-
-        const matrixData = {
-            all: {
-                all: { label: 'ผู้ป่วยรวมทุกกลุ่มโรค (ทุกประชากร)', data: [180, 210, 290, 350, 310, 342], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.42', risk: 'สูง', color: '#0284c7' },
-                general: { label: 'ประชาชนทั่วไป (ทุกโรค)', data: [70, 90, 120, 145, 130, 142], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.25', risk: 'ปานกลาง', color: '#64748b' },
-                child: { label: 'กลุ่มเด็ก <5 ปี (ทุกโรค)', data: [45, 55, 75, 88, 78, 85], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.58', risk: 'สูงมาก', color: '#f97316' },
-                elderly: { label: 'กลุ่มผู้สูงอายุ (ทุกโรค)', data: [55, 55, 80, 95, 85, 94], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.50', risk: 'สูงมาก', color: '#8b5cf6' },
-                pregnant: { label: 'กลุ่มหญิงตั้งครรภ์ (ทุกโรค)', data: [10, 10, 15, 22, 17, 21], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.30', risk: 'ปานกลาง', color: '#ec4899' }
-            },
-            resp: {
-                all: { label: 'กลุ่มโรคทางเดินหายใจ (ทุกประชากร)', data: [100, 120, 160, 190, 170, 185], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.65', risk: 'สูงมาก', color: '#0ea5e9' },
-                general: { label: 'คนทั่วไป - โรคทางเดินหายใจ', data: [35, 45, 60, 75, 65, 70], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.35', risk: 'ปานกลาง', color: '#0ea5e9' },
-                child: { label: 'เด็ก <5 ปี - โรคทางเดินหายใจ', data: [30, 35, 50, 60, 52, 58], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.75', risk: 'สูงมาก', color: '#f97316' },
-                elderly: { label: 'ผู้สูงอายุ - โรคทางเดินหายใจ', data: [30, 35, 45, 50, 48, 51], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.60', risk: 'สูงมาก', color: '#8b5cf6' },
-                pregnant: { label: 'หญิงตั้งครรภ์ - โรคทางเดินหายใจ', data: [5, 5, 5, 5, 5, 6], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.20', risk: 'ต่ำ', color: '#ec4899' }
-            },
-            eye: {
-                all: { label: 'กลุ่มโรคตาอักเสบ (ทุกประชากร)', data: [40, 45, 60, 75, 68, 72], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.38', risk: 'ปานกลาง', color: '#f59e0b' },
-                general: { label: 'คนทั่วไป - โรคตาอักเสบ', data: [20, 22, 30, 38, 34, 36], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.25', risk: 'ปานกลาง', color: '#64748b' },
-                child: { label: 'เด็ก <5 ปี - โรคตาอักเสบ', data: [8, 10, 12, 15, 12, 14], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.30', risk: 'ปานกลาง', color: '#f97316' },
-                elderly: { label: 'ผู้สูงอายุ - โรคตาอักเสบ', data: [10, 11, 15, 18, 18, 19], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.32', risk: 'ปานกลาง', color: '#8b5cf6' },
-                pregnant: { label: 'หญิงตั้งครรภ์ - โรคตาอักเสบ', data: [2, 2, 3, 4, 4, 3], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.10', risk: 'ต่ำ', color: '#ec4899' }
-            },
-            cardio: {
-                all: { label: 'กลุ่มโรคหัวใจและหลอดเลือด (ทุกประชากร)', data: [30, 35, 48, 58, 50, 56], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.48', risk: 'สูง', color: '#ef4444' },
-                general: { label: 'คนทั่วไป - โรคหัวใจและหลอดเลือด', data: [10, 12, 18, 20, 18, 20], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.20', risk: 'ต่ำ', color: '#64748b' },
-                child: { label: 'เด็ก <5 ปี - โรคหัวใจและหลอดเลือด', data: [2, 2, 3, 3, 3, 3], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.05', risk: 'ต่ำ', color: '#f97316' },
-                elderly: { label: 'ผู้สูงอายุ - โรคหัวใจและหลอดเลือด', data: [16, 19, 25, 32, 27, 30], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.55', risk: 'สูงมาก', color: '#8b5cf6' },
-                pregnant: { label: 'หญิงตั้งครรภ์ - โรคหัวใจและหลอดเลือด', data: [2, 2, 2, 3, 2, 3], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.25', risk: 'ปานกลาง', color: '#ec4899' }
-            },
-            skin: {
-                all: { label: 'กลุ่มโรคผิวหนังอักเสบ (ทุกประชากร)', data: [10, 10, 22, 27, 22, 29], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.22', risk: 'ต่ำ', color: '#10b981' },
-                general: { label: 'คนทั่วไป - โรคผิวหนังอักเสบ', data: [5, 5, 12, 12, 13, 16], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.18', risk: 'ต่ำ', color: '#64748b' },
-                child: { label: 'เด็ก <5 ปี - โรคผิวหนังอักเสบ', data: [5, 3, 10, 15, 11, 10], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.28', risk: 'ปานกลาง', color: '#f97316' },
-                elderly: { label: 'ผู้สูงอายุ - โรคผิวหนังอักเสบ', data: [0, 2, 0, 0, 0, 0], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.02', risk: 'ต่ำ', color: '#8b5cf6' },
-                pregnant: { label: 'หญิงตั้งครรภ์ - โรคผิวหนังอักเสบ', data: [0, 0, 0, 0, 0, 3], pm25: [25, 38, 55, 62, 45, 48.5], irr: '1.15', risk: 'ต่ำ', color: '#ec4899' }
-            }
-        };
-
-        const diseaseNames = { all: 'ทุกโรค', resp: 'ทางเดินหายใจ', eye: 'ตาอักเสบ', cardio: 'หัวใจและหลอดเลือด', skin: 'ผิวหนังอักเสบ' };
-        const popNames = { all: 'ทุกกลุ่มประชากร', general: 'ประชาชนทั่วไป', child: 'เด็ก (<5 ปี)', elderly: 'ผู้สูงอายุ (60 ปี+)', pregnant: 'หญิงตั้งครรภ์' };
-        
-        let currentLabels = ['สัปดาห์ที่ 1', 'สัปดาห์ที่ 2', 'สัปดาห์ที่ 3', 'สัปดาห์ที่ 4', 'สัปดาห์ที่ 5', 'สัปดาห์ที่ 6'];
-
         let pmPatientChart = new Chart(ctx, {
             type: 'line',
-            data: {
-                labels: currentLabels,
-                datasets: [
-                    {
-                        label: 'ค่าเฉลี่ย PM2.5 (µg/m³)',
-                        data: matrixData.all.all.pm25,
-                        borderColor: '#f59e0b',
-                        backgroundColor: '#f59e0b',
-                        yAxisID: 'y1',
-                        tension: 0.3,
-                        pointRadius: 4,
-                        borderDash: [5, 5]
-                    },
-                    {
-                        label: matrixData.all.all.label,
-                        data: matrixData.all.all.data,
-                        borderColor: matrixData.all.all.color,
-                        backgroundColor: matrixData.all.all.color + '15',
-                        fill: true,
-                        yAxisID: 'y',
-                        tension: 0.3,
-                        pointRadius: 4
-                    }
-                ]
-            },
+            data: { labels: [], datasets: [] },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                interaction: {
-                    mode: 'index',
-                    intersect: false,
-                },
+                interaction: { mode: 'index', intersect: false },
                 scales: {
-                    y: {
-                        type: 'linear',
-                        display: true,
-                        position: 'left',
-                        title: { display: true, text: 'จำนวนผู้ป่วย (ราย)' },
-                        beginAtZero: true
-                    },
-                    y1: {
-                        type: 'linear',
-                        display: true,
-                        position: 'right',
-                        title: { display: true, text: 'PM2.5 (µg/m³)' },
-                        grid: { drawOnChartArea: false },
-                        beginAtZero: true
-                    }
+                    y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'จำนวนผู้ป่วย (ครั้ง)' }, beginAtZero: true },
+                    y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'PM2.5 (µg/m³)' }, grid: { drawOnChartArea: false }, beginAtZero: true }
                 }
             }
         });
+
+        // โหลดข้อมูลเมื่อเปิดหน้าเว็บ
+        window.onload = async () => {
+            try {
+                const response = await fetch(API_URL);
+                const data = await response.json();
+                
+                // แปลงข้อมูลวันที่เก็บ Timestamp ไว้ใช้กรอง
+                rawData = data.map(row => {
+                    let parts = row.Date.split('/');
+                    if(parts.length === 3) {
+                        row.timestamp = new Date(parts[2] - 543, parts[1] - 1, parts[0]).getTime();
+                    } else {
+                        row.timestamp = 0;
+                    }
+                    return row;
+                }).filter(r => r.timestamp !== 0);
+                
+                rawData.sort((a, b) => a.timestamp - b.timestamp);
+                
+                document.getElementById('loadingOverlay').style.display = 'none';
+                
+                // สั่งประมวลผลช่วงวันที่ตั้งต้น
+                applyDateFilter();
+                
+            } catch (error) {
+                console.error("Error Fetching Data: ", error);
+                alert("ไม่สามารถดึงข้อมูลจากฐานข้อมูลได้ กรุณาลองใหม่อีกครั้ง");
+                document.getElementById('loadingOverlay').style.display = 'none';
+            }
+        };
 
         function setDiseaseFilter(diseaseKey, btn) {
             document.querySelectorAll('[data-disease]').forEach(b => b.classList.remove('active'));
@@ -889,61 +838,178 @@
         }
 
         function applyDateFilter() {
-            const sDay = parseInt(document.getElementById('startDay').value);
-            const sMonth = document.getElementById('startMonth').selectedIndex + 1;
-            const sYear = parseInt(document.getElementById('startYear').value);
-            const eDay = parseInt(document.getElementById('endDay').value);
-            const eMonth = document.getElementById('endMonth').selectedIndex + 1;
-            const eYear = parseInt(document.getElementById('endYear').value);
+            if(rawData.length === 0) return;
 
-            const daysDiff = Math.abs((eYear * 365 + eMonth * 30 + eDay) - (sYear * 365 + sMonth * 30 + sDay)) + 1;
+            const sDay = parseInt(document.getElementById('startDay').value);
+            const sMonth = parseInt(document.getElementById('startMonth').value) - 1;
+            const sYear = parseInt(document.getElementById('startYear').value) - 543;
+            const eDay = parseInt(document.getElementById('endDay').value);
+            const eMonth = parseInt(document.getElementById('endMonth').value) - 1;
+            const eYear = parseInt(document.getElementById('endYear').value) - 543;
+
+            const startTimestamp = new Date(sYear, sMonth, sDay).getTime();
+            const endTimestamp = new Date(eYear, eMonth, eDay, 23, 59, 59).getTime();
+
+            filteredData = rawData.filter(d => d.timestamp >= startTimestamp && d.timestamp <= endTimestamp);
+
+            if(filteredData.length === 0) {
+                alert("ไม่พบข้อมูลในช่วงเวลาที่เลือก");
+                return;
+            }
 
             const sMonthText = document.getElementById('startMonth').options[document.getElementById('startMonth').selectedIndex].text;
             const eMonthText = document.getElementById('endMonth').options[document.getElementById('endMonth').selectedIndex].text;
-
-            currentRangeLabel = `${sDay} ${sMonthText} ${sYear} - ${eDay} ${eMonthText} ${eYear} (${daysDiff} วัน)`;
-            currentLabels = ['ช่วงต้น', 'ช่วงสัปดาห์ที่ 1', 'ช่วงสัปดาห์ที่ 2', 'ช่วงสัปดาห์ที่ 3', 'ช่วงปลาย'];
+            const daysDiff = Math.ceil((endTimestamp - startTimestamp) / (1000 * 3600 * 24));
             
-            document.getElementById('kpiTrendText').innerHTML = `<i class="fa-solid fa-arrow-up"></i> +12.5% เทียบกับช่วง ${daysDiff} วันก่อนหน้า`;
+            currentRangeLabel = `${sDay} ${sMonthText} ${sYear+543} - ${eDay} ${eMonthText} ${eYear+543} (${daysDiff} วัน)`;
 
-            Object.keys(matrixData).forEach(dKey => {
-                Object.keys(matrixData[dKey]).forEach(pKey => {
-                    matrixData[dKey][pKey].data = [45, 78, 112, 95, 60];
-                    matrixData[dKey][pKey].pm25 = [30, 48, 58, 50, 35];
-                });
+            updateDashboardKPIs();
+            updateChartData();
+        }
+
+        function updateDashboardKPIs() {
+            // สรุปยอดรวมแต่ละโรค
+            let sumR = 0, sumE = 0, sumC = 0, sumS = 0;
+            let sumY97 = 0, sumZ581 = 0, sumY96 = 0;
+
+            filteredData.forEach(row => {
+                sumR += (row.Resp_All || 0);
+                sumE += (row.Eye_All || 0);
+                sumC += (row.Cardio_All || 0);
+                sumS += (row.Skin_All || 0);
+                sumY97 += (row.Y97_Count || 0);
+                sumZ581 += (row.Z581_Count || 0);
+                sumY96 += (row.Y96_Count || 0);
             });
 
-            pmPatientChart.data.labels = currentLabels;
-            updateChartData();
-            alert(`อัปเดตข้อมูลและกราฟช่วงวันที่: ${currentRangeLabel} เรียบร้อยแล้ว`);
+            const totalAll = sumR + sumE + sumC + sumS;
+            document.getElementById('kpiTotalPatients').innerText = totalAll;
+
+            // หากลุ่มโรคที่พบมากสุด
+            const maxDisease = Math.max(sumR, sumE, sumC, sumS);
+            let topName = "-";
+            if(maxDisease > 0) {
+                if(maxDisease === sumR) topName = "ทางเดินหายใจ";
+                else if(maxDisease === sumE) topName = "ตาอักเสบ";
+                else if(maxDisease === sumC) topName = "หัวใจและหลอดเลือด";
+                else if(maxDisease === sumS) topName = "ผิวหนังอักเสบ";
+            }
+            document.getElementById('kpiTopDisease').innerText = topName;
+            document.getElementById('kpiTopDiseaseCount').innerText = maxDisease > 0 ? `${maxDisease} ครั้ง` : '-';
+
+            // อัปเดต 4 กล่องโรค
+            document.getElementById('sumResp').innerText = sumR;
+            document.getElementById('sumEye').innerText = sumE;
+            document.getElementById('sumCardio').innerText = sumC;
+            document.getElementById('sumSkin').innerText = sumS;
+
+            // อัปเดตโรคร่วม
+            document.getElementById('sumY97').innerText = sumY97;
+            document.getElementById('sumZ581').innerText = sumZ581;
+            document.getElementById('sumY96').innerText = sumY96;
         }
 
         function updateChartData() {
-            const selectedDataset = matrixData[currentDisease][currentPop];
-            
-            document.getElementById('activeFilterLabel').innerText = `แสดงผล: กลุ่มโรค [${diseaseNames[currentDisease]}] × ประชากร [${popNames[currentPop]}] | ช่วงเวลา: ${currentRangeLabel}`;
+            if(filteredData.length === 0) return;
 
-            const avgPatients = Math.round(selectedDataset.data.reduce((a, b) => a + b, 0) / selectedDataset.data.length);
-            document.getElementById('insightText').innerText = 
-                `โมเดลปัวซงประเมินอัตราความเสี่ยงสัมพัทธ์ (IRR) = ${selectedDataset.irr} | คาดการณ์ผู้ป่วยกลุ่มนี้เฉลี่ย ${avgPatients} ราย/ช่วงเวลา`;
-            
-            const badgeEl = document.getElementById('insightBadge');
-            if(selectedDataset.risk === 'สูงมาก' || selectedDataset.risk === 'สูง') {
-                badgeEl.className = 'risk-badge risk-high';
-                badgeEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ระดับความเสี่ยง: ${selectedDataset.risk}`;
-            } else if(selectedDataset.risk === 'ปานกลาง') {
-                badgeEl.className = 'risk-badge risk-med';
-                badgeEl.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> ระดับความเสี่ยง: ${selectedDataset.risk}`;
-            } else {
-                badgeEl.className = 'risk-badge risk-low';
-                badgeEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> ระดับความเสี่ยง: ${selectedDataset.risk}`;
+            document.getElementById('activeFilterLabel').innerText = `แสดงผล: [${diseaseNames[currentDisease]}] × [${popNames[currentPop]}] | ช่วงเวลา: ${currentRangeLabel}`;
+
+            let labels = [];
+            let pmData = [];
+            let patientData = [];
+
+            filteredData.forEach(row => {
+                labels.push(row.Date);
+                pmData.push(row.PM25 || 0);
+                
+                // หาค่าจำนวนผู้ป่วยตาม Filter
+                let count = 0;
+                if(currentDisease === 'all') {
+                    // รวมทุกโรคตามประชากรที่เลือก
+                    count = (row[`Resp_${currentPop}`] || 0) + 
+                            (row[`Eye_${currentPop}`] || 0) + 
+                            (row[`Cardio_${currentPop}`] || 0) + 
+                            (row[`Skin_${currentPop}`] || 0);
+                } else {
+                    count = row[`${currentDisease}_${currentPop}`] || 0;
+                }
+                patientData.push(count);
+            });
+
+            // คำนวณ Rate Ratio (เทียบวันฝุ่นสูง vs ฝุ่นต่ำ)
+            let highPM_Pats = 0, highPM_Days = 0;
+            let lowPM_Pats = 0, lowPM_Days = 0;
+            const threshold = 37.5; // มาตรฐาน PM2.5 ใหม่ของไทย
+
+            for(let i=0; i<pmData.length; i++) {
+                if(pmData[i] > threshold) {
+                    highPM_Pats += patientData[i];
+                    highPM_Days++;
+                } else {
+                    lowPM_Pats += patientData[i];
+                    lowPM_Days++;
+                }
             }
 
-            pmPatientChart.data.datasets[0].data = selectedDataset.pm25;
-            pmPatientChart.data.datasets[1].label = selectedDataset.label;
-            pmPatientChart.data.datasets[1].data = selectedDataset.data;
-            pmPatientChart.data.datasets[1].borderColor = selectedDataset.color;
-            pmPatientChart.data.datasets[1].backgroundColor = selectedDataset.color + '15';
+            let rateHigh = highPM_Days > 0 ? highPM_Pats / highPM_Days : 0;
+            let rateLow = lowPM_Days > 0 ? lowPM_Pats / lowPM_Days : 0;
+            
+            let irrText = "";
+            let riskLevel = "low";
+
+            if (rateLow === 0 && rateHigh === 0) {
+                irrText = "ไม่มีข้อมูลผู้ป่วยในช่วงเวลานี้";
+            } else if (rateLow === 0 && rateHigh > 0) {
+                irrText = `อัตราผู้ป่วย ${rateHigh.toFixed(1)} ครั้ง/วัน (พบเฉพาะวันฝุ่นเกินเกณฑ์)`;
+                riskLevel = "high";
+            } else if (rateHigh === 0) {
+                irrText = `ไม่พบผู้ป่วยในวันฝุ่นเกินเกณฑ์`;
+            } else {
+                let irr = (rateHigh / rateLow).toFixed(2);
+                irrText = `อัตราความเสี่ยงสัมพัทธ์ (Rate Ratio) = ${irr} เท่า เมื่อ PM2.5 เกิน 37.5 µg/m³`;
+                if(irr > 1.5) riskLevel = "high";
+                else if(irr > 1.1) riskLevel = "med";
+            }
+
+            // อัปเดต UI กล่อง Insight
+            document.getElementById('insightText').innerText = irrText;
+            const badgeEl = document.getElementById('insightBadge');
+            
+            if(riskLevel === 'high') {
+                badgeEl.className = 'risk-badge risk-high';
+                badgeEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ความสัมพันธ์: สูง`;
+            } else if(riskLevel === 'med') {
+                badgeEl.className = 'risk-badge risk-med';
+                badgeEl.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> ความสัมพันธ์: ปานกลาง`;
+            } else {
+                badgeEl.className = 'risk-badge risk-low';
+                badgeEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> ความสัมพันธ์: ต่ำ/ไม่มีนัยสำคัญ`;
+            }
+
+            // วาดกราฟ
+            pmPatientChart.data.labels = labels;
+            pmPatientChart.data.datasets = [
+                {
+                    label: 'ค่าเฉลี่ย PM2.5 (µg/m³)',
+                    data: pmData,
+                    borderColor: '#f59e0b',
+                    backgroundColor: '#f59e0b',
+                    yAxisID: 'y1',
+                    tension: 0.3,
+                    pointRadius: 3,
+                    borderDash: [5, 5]
+                },
+                {
+                    label: `ผู้ป่วย [${diseaseNames[currentDisease]}]`,
+                    data: patientData,
+                    borderColor: colors[currentDisease],
+                    backgroundColor: colors[currentDisease] + '15',
+                    fill: true,
+                    yAxisID: 'y',
+                    tension: 0.3,
+                    pointRadius: 3
+                }
+            ];
             pmPatientChart.update();
         }
     </script>
