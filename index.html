@@ -798,23 +798,120 @@
                 const response = await fetch(API_URL);
                 const data = await response.json();
                 
-                // แปลงข้อมูลวันที่เก็บ Timestamp ไว้ใช้กรอง
-                rawData = data.map(row => {
-                    let parts = row.Date.split('/');
-                    if(parts.length === 3) {
-                        row.timestamp = new Date(parts[2] - 543, parts[1] - 1, parts[0]).getTime();
-                    } else {
-                        row.timestamp = 0;
+                // 1. สร้าง Dictionary สำหรับ PM2.5 รายเดือน
+                let monthlyPM = {};
+                const monthMap = {"ม.ค.":"01", "ก.พ.":"02", "มี.ค.":"03", "เม.ย.":"04", "พ.ค.":"05", "มิ.ย.":"06", "ก.ค.":"07", "ส.ค.":"08", "ก.ย.":"09", "ต.ค.":"10", "พ.ย.":"11", "ธ.ค.":"12"};
+                data.pmMonthly.slice(1).forEach(row => {
+                    if (row.length < 3) return;
+                    let dateStr = row[1].trim(); // คอลัมน์ B (ม.ค. 2021)
+                    let pmVal = parseFloat(row[2]) || 0; // คอลัมน์ C
+                    let parts = dateStr.split(" ");
+                    if(parts.length >= 2) {
+                        let m = monthMap[parts[0]];
+                        let y = parts[1];
+                        if(m && y) monthlyPM[`${y}-${m}`] = pmVal;
                     }
-                    return row;
-                }).filter(r => r.timestamp !== 0);
-                
+                });
+
+                // 2. สร้าง Dictionary สำหรับ PM2.5 รายวัน
+                let dailyPM = {};
+                data.pmDaily.slice(1).forEach(row => {
+                    if (row.length < 2) return;
+                    let pmVal = parseFloat(row[0]) || 0; // คอลัมน์ A
+                    let dateStr = row[1].trim(); // คอลัมน์ B (เช่น 13/9/2026)
+                    let parts = dateStr.split("/");
+                    if(parts.length === 3) {
+                        let d = parts[0].padStart(2, '0');
+                        let m = parts[1].padStart(2, '0');
+                        let y = parts[2];
+                        dailyPM[`${y}-${m}-${d}`] = pmVal;
+                    }
+                });
+
+                // 3. ประมวลผลและนับยอดผู้ป่วย
+                let agg = {};
+                data.patients.slice(1).forEach(row => {
+                    if (row.length < 25) return;
+                    let dateStr = row[0].trim(); // คอลัมน์ A (วันที่)
+                    let icd10 = (row[19] || "").toUpperCase(); // คอลัมน์ T (ICD10)
+                    let disease = row[22] || ""; // คอลัมน์ W (กลุ่มโรค)
+                    let ageGroup = row[23] || ""; // คอลัมน์ X (กลุ่มอายุ)
+                    let preg = row[24] || ""; // คอลัมน์ Y (คนท้อง)
+                    
+                    let parts = dateStr.split("/");
+                    if(parts.length !== 3) return;
+                    
+                    let d = parts[0].padStart(2, '0');
+                    let m = parts[1].padStart(2, '0');
+                    let y = parseInt(parts[2]);
+                    if (y > 2400) y -= 543; // แปลง พ.ศ. เป็น ค.ศ. สำหรับ Timestamp
+                    
+                    let dateKey = `${y}-${m}-${d}`;
+                    let monthKey = `${y}-${m}`;
+                    
+                    if (!agg[dateKey]) {
+                        // ดึงค่า PM2.5 รายวัน ถ้าไม่มีให้ใช้รายเดือน ถ้าไม่มีอีกให้เป็น 0
+                        let pm = dailyPM[dateKey] !== undefined ? dailyPM[dateKey] : (monthlyPM[monthKey] || 0);
+                        agg[dateKey] = {
+                            timestamp: new Date(y, parseInt(m)-1, parseInt(d)).getTime(),
+                            Date: `${d}/${parseInt(m)}/${y+543}`,
+                            PM25: pm,
+                            Resp_All: 0, Resp_Gen: 0, Resp_Child: 0, Resp_Elder: 0, Resp_Preg: 0,
+                            Eye_All: 0, Eye_Gen: 0, Eye_Child: 0, Eye_Elder: 0, Eye_Preg: 0,
+                            Cardio_All: 0, Cardio_Gen: 0, Cardio_Child: 0, Cardio_Elder: 0, Cardio_Preg: 0,
+                            Skin_All: 0, Skin_Gen: 0, Skin_Child: 0, Skin_Elder: 0, Skin_Preg: 0,
+                            Y97_Count: 0, Z581_Count: 0, Y96_Count: 0
+                        };
+                    }
+                    
+                    let dayData = agg[dateKey];
+                    let isGen = ageGroup === "วัยผู้ใหญ่";
+                    let isChild = ageGroup === "เด็ก";
+                    let isElder = ageGroup === "ผู้สูงอายุ";
+                    let isPreg = preg === "ตั้งครรภ์";
+                    
+                    // นับจำนวนตามกลุ่มโรค
+                    if (disease.includes("ทางเดินหายใจ")) {
+                        dayData.Resp_All++;
+                        if (isGen) dayData.Resp_Gen++;
+                        if (isChild) dayData.Resp_Child++;
+                        if (isElder) dayData.Resp_Elder++;
+                        if (isPreg) dayData.Resp_Preg++;
+                    }
+                    if (disease.includes("ตาอักเสบ")) {
+                        dayData.Eye_All++;
+                        if (isGen) dayData.Eye_Gen++;
+                        if (isChild) dayData.Eye_Child++;
+                        if (isElder) dayData.Eye_Elder++;
+                        if (isPreg) dayData.Eye_Preg++;
+                    }
+                    if (disease.includes("หัวใจและหลอดเลือด")) {
+                        dayData.Cardio_All++;
+                        if (isGen) dayData.Cardio_Gen++;
+                        if (isChild) dayData.Cardio_Child++;
+                        if (isElder) dayData.Cardio_Elder++;
+                        if (isPreg) dayData.Cardio_Preg++;
+                    }
+                    if (disease.includes("ผิวหนังอักเสบ")) {
+                        dayData.Skin_All++;
+                        if (isGen) dayData.Skin_Gen++;
+                        if (isChild) dayData.Skin_Child++;
+                        if (isElder) dayData.Skin_Elder++;
+                        if (isPreg) dayData.Skin_Preg++;
+                    }
+                    
+                    // นับโรคร่วม
+                    if (icd10.includes("Y97")) dayData.Y97_Count++;
+                    if (icd10.includes("Z58.1")) dayData.Z581_Count++;
+                    if (icd10.includes("Y96")) dayData.Y96_Count++;
+                });
+
+                // สรุปข้อมูลทั้งหมดเป็น Array เพื่อส่งให้ระบบฟิลเตอร์เดิมทำงานต่อ
+                rawData = Object.values(agg);
                 rawData.sort((a, b) => a.timestamp - b.timestamp);
                 
                 document.getElementById('loadingOverlay').style.display = 'none';
-                
-                // สั่งประมวลผลช่วงวันที่ตั้งต้น
-                applyDateFilter();
+                applyDateFilter(); // เรียกใช้งานการแสดงผลครั้งแรก
                 
             } catch (error) {
                 console.error("Error Fetching Data: ", error);
