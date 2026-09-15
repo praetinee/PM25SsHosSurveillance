@@ -1050,7 +1050,7 @@
             let pmData = labels.map(k => (grouped[k].pmSum / grouped[k].pmCount).toFixed(1)); // PM2.5 ใช้ค่าเฉลี่ย
             let patientData = labels.map(k => grouped[k].patSum); // ผู้ป่วยใช้ผลรวม
 
-            // 3. คำนวณ Rate Ratio (ทุกๆ PM2.5 เพิ่ม 10 µg/m³) พร้อมหาความมีนัยสำคัญ (Log-Linear)
+            // 3. คำนวณ Rate Ratio (ทุกๆ PM2.5 เพิ่ม 10 µg/m³) ด้วยสมการ Quasi-Poisson Approximation
             let sumX = 0, sumY = 0, n = 0;
             let totalPats = 0;
             let dataPoints = [];
@@ -1061,11 +1061,11 @@
                     : (row[`${currentDisease}_${currentPop}`]||0);
                 
                 let x = row.PM25;
-                let y = Math.log(pCount + 1); // แปลง Log-linear คล้าย Poisson
+                let yLog = Math.log(pCount + 1); 
                 
-                sumX += x; sumY += y; n++;
+                sumX += x; sumY += yLog; n++;
                 totalPats += pCount;
-                dataPoints.push({x, y});
+                dataPoints.push({x: x, yOrig: pCount, yLog: yLog});
             });
 
             let irrText = "";
@@ -1076,12 +1076,13 @@
             if (n < 3 || totalPats === 0) {
                 irrText = "ข้อมูลไม่เพียงพอต่อการวิเคราะห์สถิติ";
             } else {
+                // ขั้นที่ 1: หาค่าสัมประสิทธิ์ตั้งต้น (Initial Estimate)
                 let xMean = sumX / n;
                 let yMean = sumY / n;
                 let sumXY = 0, sumX2 = 0;
-
+                
                 dataPoints.forEach(p => {
-                    sumXY += (p.x - xMean) * (p.y - yMean);
+                    sumXY += (p.x - xMean) * (p.yLog - yMean);
                     sumX2 += Math.pow(p.x - xMean, 2);
                 });
 
@@ -1091,29 +1092,48 @@
                     let beta1 = sumXY / sumX2;
                     let beta0 = yMean - beta1 * xMean;
 
-                    // หา Standard Error และ T-Stat เพื่อเช็คนัยสำคัญ (95% Confidence)
-                    let sse = 0;
+                    // ขั้นที่ 2: Quasi-Poisson Adjustment (หาความแปรปรวนส่วนเกิน)
+                    let pearsonChi2 = 0;
+                    let sumMu = 0;
+                    let sumMuX = 0;
+
                     dataPoints.forEach(p => {
-                        let yHat = beta0 + beta1 * p.x;
-                        sse += Math.pow(p.y - yHat, 2);
+                        p.mu = Math.exp(beta0 + beta1 * p.x) - 1; // ค่าคาดหมาย (Expected Value)
+                        if (p.mu < 0.001) p.mu = 0.001; // ป้องกันส่วนเป็นศูนย์
+                        
+                        pearsonChi2 += Math.pow(p.yOrig - p.mu, 2) / p.mu;
+                        sumMu += p.mu;
+                        sumMuX += p.mu * p.x;
+                    });
+
+                    // คำนวณ Dispersion Parameter (ถ้า < 1 ให้ใช้ 1 ตามหลัก Poisson ปกติ)
+                    let dispersion = pearsonChi2 / (n - 2);
+                    if (dispersion < 1) dispersion = 1; 
+
+                    // ขั้นที่ 3: ปรับค่า Standard Error และหา P-value (เทียบ T-Stat)
+                    let xwMean = sumMuX / sumMu;
+                    let sumMuX2 = 0;
+                    
+                    dataPoints.forEach(p => {
+                        sumMuX2 += p.mu * Math.pow(p.x - xwMean, 2);
                     });
                     
-                    let seBeta1 = Math.sqrt((sse / (n - 2)) / sumX2);
+                    let seBeta1 = Math.sqrt(dispersion / sumMuX2);
                     let tStat = beta1 / seBeta1;
-                    let isSignificant = Math.abs(tStat) > 1.96; // เทียบเท่า P-value < 0.05
+                    let isSignificant = Math.abs(tStat) > 1.96; // 95% Confidence Interval
 
-                    let irr10 = Math.exp(beta1 * 10); // RR เมื่อฝุ่นเพิ่ม 10 หน่วย
+                    let irr10 = Math.exp(beta1 * 10); // Rate Ratio ทุกๆ 10 µg/m³
                     let percent = ((irr10 - 1) * 100).toFixed(1);
 
                     if (isSignificant && beta1 > 0) {
-                        irrText = `ความเสี่ยง (RR) = ${irr10.toFixed(2)} เท่า (เพิ่มขึ้น ${percent}%) เมื่อ PM2.5 เพิ่มทุกๆ 10 µg/m³`;
+                        irrText = `ความเสี่ยง (RR) = ${irr10.toFixed(2)} เท่า (เพิ่มขึ้น ${percent}%) ทุกๆ 10 µg/m³ (Dispersion: ${dispersion.toFixed(1)})`;
                         badgeClass = irr10 >= 1.1 ? 'risk-high' : 'risk-med';
                         badgeIcon = irr10 >= 1.1 ? 'fa-triangle-exclamation' : 'fa-circle-exclamation';
                         riskLabel = "มีนัยสำคัญ (สัมพันธ์เชิงบวก)";
                     } else if (isSignificant && beta1 < 0) {
-                        irrText = `ความเสี่ยง (RR) = ${irr10.toFixed(2)} (ข้อมูลสวนทางกับค่าฝุ่นอย่างมีนัยสำคัญ)`;
+                        irrText = `ความเสี่ยง (RR) = ${irr10.toFixed(2)} (ข้อมูลผู้ป่วยลดลงอย่างมีนัยสำคัญเมื่อฝุ่นเพิ่ม)`;
                     } else {
-                        irrText = `RR = ${irr10.toFixed(2)} เท่า (แต่ยังไม่มีนัยสำคัญทางสถิติที่ 95%)`;
+                        irrText = `RR = ${irr10.toFixed(2)} เท่า (ไม่มีนัยสำคัญทางสถิติ, Dispersion: ${dispersion.toFixed(1)})`;
                     }
                 }
             }
