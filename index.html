@@ -706,15 +706,26 @@
                         <button class="chart-tab" data-disease="Cardio" onclick="setDiseaseFilter('Cardio', this)">หัวใจฯ</button>
                         <button class="chart-tab" data-disease="Skin" onclick="setDiseaseFilter('Skin', this)">ผิวหนัง</button>
                     </div>
-                </div>
-                <div class="chart-filter-groups">
                     <div class="filter-group-box">
                         <span class="filter-group-label">ประชากร:</span>
                         <button class="chart-tab active" data-pop="All" onclick="setPopFilter('All', this)">ทุกกลุ่ม</button>
-                        <button class="chart-tab" data-pop="Gen" onclick="setPopFilter('Gen', this)">คนทั่วไป</button>
-                        <button class="chart-tab" data-pop="Child" onclick="setPopFilter('Child', this)">เด็ก (<5ปี)</button>
-                        <button class="chart-tab" data-pop="Elder" onclick="setPopFilter('Elder', this)">ผู้สูงอายุ</button>
+                        <button class="chart-tab" data-pop="Gen" onclick="setPopFilter('Gen', this)">ทั่วไป</button>
+                        <button class="chart-tab" data-pop="Child" onclick="setPopFilter('Child', this)">เด็ก(<5ปี)</button>
+                        <button class="chart-tab" data-pop="Elder" onclick="setPopFilter('Elder', this)">สูงอายุ</button>
                         <button class="chart-tab" data-pop="Preg" onclick="setPopFilter('Preg', this)">คนท้อง</button>
+                    </div>
+                    <!-- ส่วนที่เพิ่มใหม่: ตัวแปรสถิติ -->
+                    <div class="filter-group-box">
+                        <span class="filter-group-label">สถิติเสริม:</span>
+                        <select id="lagSelect" class="chart-tab" style="border: 1px solid var(--border-color); outline: none;" onchange="updateChartData()">
+                            <option value="0">Lag 0 (ฝุ่นวันเดียวกัน)</option>
+                            <option value="1">Lag 1 (ฝุ่นเมื่อวาน)</option>
+                            <option value="2">Lag 2 (ฝุ่น 2 วันก่อน)</option>
+                            <option value="3">Lag 3 (ฝุ่น 3 วันก่อน)</option>
+                        </select>
+                        <label style="font-size: 11px; margin-left: 4px; display: flex; align-items: center; gap: 4px; cursor: pointer; color: var(--text-muted); font-weight: 500;">
+                            <input type="checkbox" id="excludeWeekend" onchange="updateChartData()"> ไม่รวม ส.-อา.
+                        </label>
                     </div>
                 </div>
             </div>
@@ -1006,143 +1017,138 @@
             document.getElementById('sumY96').innerText = sumY96;
         }
 
+        // ฟังก์ชันคำนวณสมการ Quasi-Poisson (IRLS)
+        function quasiPoissonIRLS(xArr, yArr) {
+            let n = xArr.length;
+            if (n < 3) return null;
+            let sumY = yArr.reduce((a, b) => a + b, 0);
+            let meanY = sumY / n;
+            if (meanY === 0) return null;
+
+            let beta0 = Math.log(meanY), beta1 = 0;
+            // วนลูปหาค่าสัมประสิทธิ์ (Max 10 รอบ)
+            for (let iter = 0; iter < 10; iter++) {
+                let sumW=0, sumWX=0, sumWY=0, sumWXX=0, sumWXY=0;
+                for (let i = 0; i < n; i++) {
+                    let eta = beta0 + beta1 * xArr[i];
+                    let mu = Math.exp(eta);
+                    if(mu < 1e-5) mu = 1e-5; // กัน error 0
+                    let w = mu;
+                    let z = eta + (yArr[i] - mu) / mu;
+                    
+                    sumW += w; sumWX += w * xArr[i]; sumWY += w * z;
+                    sumWXX += w * xArr[i] * xArr[i]; sumWXY += w * xArr[i] * z;
+                }
+                let det = sumW * sumWXX - sumWX * sumWX;
+                if (Math.abs(det) < 1e-10) break;
+                
+                let newBeta0 = (sumWXX * sumWY - sumWX * sumWXY) / det;
+                let newBeta1 = (sumW * sumWXY - sumWX * sumWY) / det;
+                if (Math.abs(newBeta0 - beta0) < 1e-6 && Math.abs(newBeta1 - beta1) < 1e-6) break;
+                beta0 = newBeta0; beta1 = newBeta1;
+            }
+
+            // คำนวณ Dispersion และค่าสถิติ
+            let pearsonChi2 = 0, sumW = 0, sumWX = 0;
+            for (let i = 0; i < n; i++) {
+                let mu = Math.exp(beta0 + beta1 * xArr[i]);
+                pearsonChi2 += Math.pow(yArr[i] - mu, 2) / mu;
+                sumW += mu; sumWX += mu * xArr[i];
+            }
+            
+            let dispersion = pearsonChi2 / (n - 2);
+            if (dispersion < 1) dispersion = 1; // Quasi-Poisson constraint
+
+            let meanXW = sumWX / sumW, sumDev = 0;
+            for (let i = 0; i < n; i++) {
+                let mu = Math.exp(beta0 + beta1 * xArr[i]);
+                sumDev += mu * Math.pow(xArr[i] - meanXW, 2);
+            }
+            
+            let seBeta1 = Math.sqrt(dispersion / sumDev);
+            let tStat = beta1 / seBeta1;
+            let isSig = Math.abs(tStat) > 1.96; // 95% CI (P-value < 0.05)
+            
+            let irr10 = Math.exp(beta1 * 10);
+            return { irr10, percent: (irr10 - 1) * 100, isSignificant: isSig, beta1 };
+        }
+
+        // ฟังก์ชันวาดกราฟและเตรียมข้อมูลหลัก
         function updateChartData() {
             if(filteredData.length === 0) return;
             document.getElementById('activeFilterLabel').innerText = `แสดงผล: [${diseaseNames[currentDisease]}] × [${popNames[currentPop]}] | ช่วงเวลา: ${currentRangeLabel}`;
 
-            // 1. ประเมินสเกลเวลา (วัน, สัปดาห์, เดือน)
-            const daysDiff = Math.ceil((filteredData[filteredData.length-1].timestamp - filteredData[0].timestamp) / (1000 * 3600 * 24));
-            let mode = 'day';
-            if(daysDiff > 365) mode = 'month';
-            else if(daysDiff > 31) mode = 'week';
+            let lagDays = parseInt(document.getElementById('lagSelect').value);
+            let excludeWeekend = document.getElementById('excludeWeekend').checked;
 
-            // 2. จัดกลุ่มข้อมูล (Grouping)
-            let grouped = {};
+            // สร้าง Dict ค่าฝุ่นทุกวันจาก RawData (เพื่อดึงข้ามเดือนได้)
+            let pmDict = {};
+            rawData.forEach(r => pmDict[r.timestamp] = r.PM25);
+
+            let xArr = [], yArr = [];
+            let grouped = {}; // สำหรับวาดกราฟ
+            const daysDiff = Math.ceil((filteredData[filteredData.length-1].timestamp - filteredData[0].timestamp) / (1000 * 3600 * 24));
+            let mode = daysDiff > 365 ? 'month' : (daysDiff > 31 ? 'week' : 'day');
             const monthNames = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
-            
+
             filteredData.forEach(row => {
                 let d = new Date(row.timestamp);
-                let key = '';
                 
-                if (mode === 'month') {
-                    key = `${monthNames[d.getMonth()]} ${d.getFullYear() + 543}`;
-                } else if (mode === 'week') {
-                    // จัดกลุ่มทีละ 7 วัน
-                    let diffFromStart = Math.floor((row.timestamp - filteredData[0].timestamp) / (1000 * 3600 * 24));
-                    let weekNum = Math.floor(diffFromStart / 7) + 1;
-                    key = `สัปดาห์ที่ ${weekNum} (${monthNames[d.getMonth()]})`;
-                } else {
-                    key = row.Date;
-                }
+                // กรองวันหยุด
+                if (excludeWeekend && (d.getDay() === 0 || d.getDay() === 6)) return;
 
-                if(!grouped[key]) grouped[key] = { pmSum: 0, pmCount: 0, patSum: 0 };
-                grouped[key].pmSum += row.PM25;
-                grouped[key].pmCount += 1;
-                
-                let count = currentDisease === 'all' 
-                    ? (row[`Resp_${currentPop}`] || 0) + (row[`Eye_${currentPop}`] || 0) + (row[`Cardio_${currentPop}`] || 0) + (row[`Skin_${currentPop}`] || 0)
-                    : (row[`${currentDisease}_${currentPop}`] || 0);
-                
-                grouped[key].patSum += count;
-            });
-
-            let labels = Object.keys(grouped);
-            let pmData = labels.map(k => (grouped[k].pmSum / grouped[k].pmCount).toFixed(1)); // PM2.5 ใช้ค่าเฉลี่ย
-            let patientData = labels.map(k => grouped[k].patSum); // ผู้ป่วยใช้ผลรวม
-
-            // 3. คำนวณ Rate Ratio (ทุกๆ PM2.5 เพิ่ม 10 µg/m³) ด้วยสมการ Quasi-Poisson Approximation
-            let sumX = 0, sumY = 0, n = 0;
-            let totalPats = 0;
-            let dataPoints = [];
-
-            filteredData.forEach(row => {
+                // จับคู่ Lag PM2.5
+                let targetTime = row.timestamp - (lagDays * 24 * 60 * 60 * 1000);
+                let lagPM = pmDict[targetTime];
                 let pCount = currentDisease === 'all' 
                     ? (row[`Resp_${currentPop}`]||0) + (row[`Eye_${currentPop}`]||0) + (row[`Cardio_${currentPop}`]||0) + (row[`Skin_${currentPop}`]||0)
                     : (row[`${currentDisease}_${currentPop}`]||0);
+
+                if (lagPM !== undefined) {
+                    xArr.push(lagPM);
+                    yArr.push(pCount);
+                }
+
+                // ข้อมูลสำหรับกราฟ
+                let key = mode === 'month' ? `${monthNames[d.getMonth()]} ${d.getFullYear() + 543}` :
+                          mode === 'week' ? `สัปดาห์ที่ ${Math.floor((row.timestamp - filteredData[0].timestamp)/(86400000*7))+1} (${monthNames[d.getMonth()]})` :
+                          row.Date;
                 
-                let x = row.PM25;
-                let yLog = Math.log(pCount + 1); 
-                
-                sumX += x; sumY += yLog; n++;
-                totalPats += pCount;
-                dataPoints.push({x: x, yOrig: pCount, yLog: yLog});
+                if(!grouped[key]) grouped[key] = { pmSum: 0, pmCount: 0, patSum: 0 };
+                grouped[key].pmSum += (lagPM !== undefined ? lagPM : row.PM25);
+                grouped[key].pmCount += 1;
+                grouped[key].patSum += pCount;
             });
 
-            let irrText = "";
-            let badgeClass = "risk-low";
-            let badgeIcon = "fa-circle-check";
-            let riskLabel = "ไม่มีนัยสำคัญ";
+            // วิเคราะห์ผล Quasi-Poisson
+            let stats = quasiPoissonIRLS(xArr, yArr);
+            let irrText = "ข้อมูลไม่เพียงพอต่อการวิเคราะห์สถิติ";
+            let badgeClass = "risk-low", badgeIcon = "fa-circle-check", riskLabel = "ไม่มีข้อมูล";
 
-            if (n < 3 || totalPats === 0) {
-                irrText = "ข้อมูลไม่เพียงพอต่อการวิเคราะห์สถิติ";
-            } else {
-                // ขั้นที่ 1: หาค่าสัมประสิทธิ์ตั้งต้น (Initial Estimate)
-                let xMean = sumX / n;
-                let yMean = sumY / n;
-                let sumXY = 0, sumX2 = 0;
-                
-                dataPoints.forEach(p => {
-                    sumXY += (p.x - xMean) * (p.yLog - yMean);
-                    sumX2 += Math.pow(p.x - xMean, 2);
-                });
-
-                if (sumX2 === 0) {
-                    irrText = "ค่า PM2.5 คงที่ ไม่สามารถหาความสัมพันธ์ได้";
+            if (stats) {
+                if (stats.isSignificant && stats.beta1 > 0) {
+                    irrText = `ทุกๆ 10 µg/m³ ที่เพิ่มขึ้น ส่งผลให้ผู้ป่วยเพิ่มขึ้น ${stats.percent.toFixed(1)}% อย่างมีนัยสำคัญ (RR = ${stats.irr10.toFixed(2)})`;
+                    badgeClass = stats.irr10 >= 1.1 ? 'risk-high' : 'risk-med';
+                    badgeIcon = stats.irr10 >= 1.1 ? 'fa-triangle-exclamation' : 'fa-circle-exclamation';
+                    riskLabel = "มีนัยสำคัญ (เพิ่มขึ้น)";
+                } else if (stats.isSignificant && stats.beta1 < 0) {
+                    irrText = `ผู้ป่วยลดลง ${Math.abs(stats.percent).toFixed(1)}% อย่างมีนัยสำคัญ (สวนทางกับค่าฝุ่นที่เพิ่มขึ้น)`;
+                    riskLabel = "มีนัยสำคัญ (ลดลง)";
                 } else {
-                    let beta1 = sumXY / sumX2;
-                    let beta0 = yMean - beta1 * xMean;
-
-                    // ขั้นที่ 2: Quasi-Poisson Adjustment (หาความแปรปรวนส่วนเกิน)
-                    let pearsonChi2 = 0;
-                    let sumMu = 0;
-                    let sumMuX = 0;
-
-                    dataPoints.forEach(p => {
-                        p.mu = Math.exp(beta0 + beta1 * p.x) - 1; // ค่าคาดหมาย (Expected Value)
-                        if (p.mu < 0.001) p.mu = 0.001; // ป้องกันส่วนเป็นศูนย์
-                        
-                        pearsonChi2 += Math.pow(p.yOrig - p.mu, 2) / p.mu;
-                        sumMu += p.mu;
-                        sumMuX += p.mu * p.x;
-                    });
-
-                    // คำนวณ Dispersion Parameter (ถ้า < 1 ให้ใช้ 1 ตามหลัก Poisson ปกติ)
-                    let dispersion = pearsonChi2 / (n - 2);
-                    if (dispersion < 1) dispersion = 1; 
-
-                    // ขั้นที่ 3: ปรับค่า Standard Error และหา P-value (เทียบ T-Stat)
-                    let xwMean = sumMuX / sumMu;
-                    let sumMuX2 = 0;
-                    
-                    dataPoints.forEach(p => {
-                        sumMuX2 += p.mu * Math.pow(p.x - xwMean, 2);
-                    });
-                    
-                    let seBeta1 = Math.sqrt(dispersion / sumMuX2);
-                    let tStat = beta1 / seBeta1;
-                    let isSignificant = Math.abs(tStat) > 1.96; // 95% Confidence Interval
-
-                    let irr10 = Math.exp(beta1 * 10); // Rate Ratio ทุกๆ 10 µg/m³
-                    let percent = ((irr10 - 1) * 100).toFixed(1);
-
-                    if (isSignificant && beta1 > 0) {
-                        irrText = `ความเสี่ยง (RR) = ${irr10.toFixed(2)} เท่า (เพิ่มขึ้น ${percent}%) ทุกๆ 10 µg/m³ (Dispersion: ${dispersion.toFixed(1)})`;
-                        badgeClass = irr10 >= 1.1 ? 'risk-high' : 'risk-med';
-                        badgeIcon = irr10 >= 1.1 ? 'fa-triangle-exclamation' : 'fa-circle-exclamation';
-                        riskLabel = "มีนัยสำคัญ (สัมพันธ์เชิงบวก)";
-                    } else if (isSignificant && beta1 < 0) {
-                        irrText = `ความเสี่ยง (RR) = ${irr10.toFixed(2)} (ข้อมูลผู้ป่วยลดลงอย่างมีนัยสำคัญเมื่อฝุ่นเพิ่ม)`;
-                    } else {
-                        irrText = `RR = ${irr10.toFixed(2)} เท่า (ไม่มีนัยสำคัญทางสถิติ, Dispersion: ${dispersion.toFixed(1)})`;
-                    }
+                    irrText = `ไม่พบความสัมพันธ์ที่ชัดเจน ผู้ป่วยเปลี่ยน ${stats.percent.toFixed(1)}% แต่ไม่มีนัยสำคัญทางสถิติ (RR = ${stats.irr10.toFixed(2)})`;
+                    riskLabel = "ไม่มีนัยสำคัญ";
                 }
             }
 
-            let badgeEl = document.getElementById('insightBadge');
-            badgeEl.className = `risk-badge ${badgeClass}`;
-            badgeEl.innerHTML = `<i class="fa-solid ${badgeIcon}"></i> ${riskLabel}`;
+            document.getElementById('insightBadge').className = `risk-badge ${badgeClass}`;
+            document.getElementById('insightBadge').innerHTML = `<i class="fa-solid ${badgeIcon}"></i> ${riskLabel}`;
             document.getElementById('insightText').innerText = irrText;
-            // 4. อัปเดตกราฟ (ถมพื้นที่สีเทาให้ PM2.5)
+
+            // วาดกราฟ
+            let labels = Object.keys(grouped);
+            let pmData = labels.map(k => (grouped[k].pmSum / grouped[k].pmCount).toFixed(1));
+            let patientData = labels.map(k => grouped[k].patSum);
+
             pmPatientChart.data.labels = labels;
             pmPatientChart.data.datasets = [
                 {
@@ -1155,19 +1161,19 @@
                     tension: 0.3,
                     pointRadius: 4,
                     borderWidth: 3,
-                    order: 1 // ให้อยู่ด้านหน้าสุด
+                    order: 1
                 },
                 {
-                    label: 'ค่าเฉลี่ย PM2.5 (µg/m³)',
+                    label: `ค่าเฉลี่ย PM2.5 ${lagDays>0? '(Lag '+lagDays+')' : ''}`,
                     data: pmData,
-                    borderColor: '#9ca3af', // สีเทา
-                    backgroundColor: 'rgba(156, 163, 175, 0.4)', // ถมพื้นที่สีเทาโปร่งแสง
-                    fill: true, // เปิดการถมพื้นที่
+                    borderColor: '#9ca3af',
+                    backgroundColor: 'rgba(156, 163, 175, 0.4)',
+                    fill: true,
                     type: 'line',
                     yAxisID: 'y1',
                     tension: 0.4,
-                    pointRadius: 0, // ซ่อนจุดให้ดูสมูทเป็นก้อนมวล
-                    order: 2 // ให้อยู่ด้านหลัง
+                    pointRadius: 0,
+                    order: 2
                 }
             ];
             pmPatientChart.update();
