@@ -1050,31 +1050,51 @@
             let pmData = labels.map(k => (grouped[k].pmSum / grouped[k].pmCount).toFixed(1)); // PM2.5 ใช้ค่าเฉลี่ย
             let patientData = labels.map(k => grouped[k].patSum); // ผู้ป่วยใช้ผลรวม
 
-            // 3. คำนวณ Rate Ratio (จากข้อมูลรายวันดิบ เพื่อความแม่นยำ)
-            let highPats = 0, highDays = 0, lowPats = 0, lowDays = 0;
+            // 3. คำนวณ Rate Ratio (ทุกๆ PM2.5 เพิ่ม 10 µg/m³) ด้วย Log-Linear Approximation
+            let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, n = 0;
+            let totalPats = 0;
+            
             filteredData.forEach(row => {
                 let pCount = currentDisease === 'all' 
                     ? (row[`Resp_${currentPop}`]||0) + (row[`Eye_${currentPop}`]||0) + (row[`Cardio_${currentPop}`]||0) + (row[`Skin_${currentPop}`]||0)
                     : (row[`${currentDisease}_${currentPop}`]||0);
                 
-                if(row.PM25 > 37.5) { highPats += pCount; highDays++; } 
-                else { lowPats += pCount; lowDays++; }
+                let x = row.PM25;
+                let y = Math.log(pCount + 1); // +1 ป้องกัน log(0)
+                sumX += x; sumY += y; sumXY += x * y; sumX2 += x * x; 
+                n++;
+                totalPats += pCount;
             });
 
-            let rHigh = highDays > 0 ? highPats / highDays : 0;
-            let rLow = lowDays > 0 ? lowPats / lowDays : 0;
+            let xMean = sumX / n;
+            let yMean = sumY / n;
+            let denominator = (sumX2 - n * xMean * xMean);
             
-            let irrText = (rLow === 0 && rHigh === 0) ? "ไม่มีข้อมูลผู้ป่วยในช่วงเวลานี้" :
-                          (rLow === 0 && rHigh > 0) ? `อัตราผู้ป่วย ${rHigh.toFixed(1)} ครั้ง/วัน (พบเฉพาะวันฝุ่นเกินเกณฑ์)` :
-                          (rHigh === 0) ? `ไม่พบผู้ป่วยในวันฝุ่นเกินเกณฑ์` :
-                          `ความเสี่ยง (Rate Ratio) = ${(rHigh/rLow).toFixed(2)} เท่า เมื่อ PM2.5 เกิน 37.5 µg/m³`;
+            let irrText = "";
+            let badgeClass = "risk-low";
+            let badgeIcon = "fa-circle-check";
+            let riskLabel = "ต่ำ";
+
+            if (n === 0 || denominator === 0 || totalPats === 0) {
+                irrText = "ข้อมูลไม่เพียงพอต่อการคำนวณสถิติ";
+            } else {
+                let beta1 = (sumXY - n * xMean * yMean) / denominator;
+                let irr10 = Math.exp(beta1 * 10); // Rate Ratio ต่อ 10 หน่วย
+                
+                if (irr10 > 1.01) {
+                    let percent = ((irr10 - 1) * 100).toFixed(1);
+                    irrText = `ความเสี่ยง (RR) = ${irr10.toFixed(2)} เท่า (เพิ่มขึ้น ${percent}%) เมื่อ PM2.5 เพิ่มทุกๆ 10 µg/m³`;
+                    if (irr10 >= 1.2) { badgeClass = 'risk-high'; badgeIcon = 'fa-triangle-exclamation'; riskLabel = 'สูง'; }
+                    else if (irr10 >= 1.05) { badgeClass = 'risk-med'; badgeIcon = 'fa-circle-exclamation'; riskLabel = 'ปานกลาง'; }
+                } else {
+                    irrText = `ไม่พบความสัมพันธ์เชิงบวกที่ชัดเจน (RR = ${irr10.toFixed(2)})`;
+                }
+            }
 
             let badgeEl = document.getElementById('insightBadge');
-            if(rLow > 0 && rHigh/rLow > 1.5) { badgeEl.className = 'risk-badge risk-high'; badgeEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> สูง`; }
-            else if(rLow > 0 && rHigh/rLow > 1.1) { badgeEl.className = 'risk-badge risk-med'; badgeEl.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> ปานกลาง`; }
-            else { badgeEl.className = 'risk-badge risk-low'; badgeEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> ต่ำ`; }
+            badgeEl.className = `risk-badge ${badgeClass}`;
+            badgeEl.innerHTML = `<i class="fa-solid ${badgeIcon}"></i> ${riskLabel}`;
             document.getElementById('insightText').innerText = irrText;
-
             // 4. อัปเดตกราฟ (ถมพื้นที่สีเทาให้ PM2.5)
             pmPatientChart.data.labels = labels;
             pmPatientChart.data.datasets = [
