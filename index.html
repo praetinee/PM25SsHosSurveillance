@@ -1050,44 +1050,71 @@
             let pmData = labels.map(k => (grouped[k].pmSum / grouped[k].pmCount).toFixed(1)); // PM2.5 ใช้ค่าเฉลี่ย
             let patientData = labels.map(k => grouped[k].patSum); // ผู้ป่วยใช้ผลรวม
 
-            // 3. คำนวณ Rate Ratio (ทุกๆ PM2.5 เพิ่ม 10 µg/m³) ด้วย Log-Linear Approximation
-            let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, n = 0;
+            // 3. คำนวณ Rate Ratio (ทุกๆ PM2.5 เพิ่ม 10 µg/m³) พร้อมหาความมีนัยสำคัญ (Log-Linear)
+            let sumX = 0, sumY = 0, n = 0;
             let totalPats = 0;
-            
+            let dataPoints = [];
+
             filteredData.forEach(row => {
                 let pCount = currentDisease === 'all' 
                     ? (row[`Resp_${currentPop}`]||0) + (row[`Eye_${currentPop}`]||0) + (row[`Cardio_${currentPop}`]||0) + (row[`Skin_${currentPop}`]||0)
                     : (row[`${currentDisease}_${currentPop}`]||0);
                 
                 let x = row.PM25;
-                let y = Math.log(pCount + 1); // +1 ป้องกัน log(0)
-                sumX += x; sumY += y; sumXY += x * y; sumX2 += x * x; 
-                n++;
+                let y = Math.log(pCount + 1); // แปลง Log-linear คล้าย Poisson
+                
+                sumX += x; sumY += y; n++;
                 totalPats += pCount;
+                dataPoints.push({x, y});
             });
 
-            let xMean = sumX / n;
-            let yMean = sumY / n;
-            let denominator = (sumX2 - n * xMean * xMean);
-            
             let irrText = "";
             let badgeClass = "risk-low";
             let badgeIcon = "fa-circle-check";
-            let riskLabel = "ต่ำ";
+            let riskLabel = "ไม่มีนัยสำคัญ";
 
-            if (n === 0 || denominator === 0 || totalPats === 0) {
-                irrText = "ข้อมูลไม่เพียงพอต่อการคำนวณสถิติ";
+            if (n < 3 || totalPats === 0) {
+                irrText = "ข้อมูลไม่เพียงพอต่อการวิเคราะห์สถิติ";
             } else {
-                let beta1 = (sumXY - n * xMean * yMean) / denominator;
-                let irr10 = Math.exp(beta1 * 10); // Rate Ratio ต่อ 10 หน่วย
-                
-                if (irr10 > 1.01) {
-                    let percent = ((irr10 - 1) * 100).toFixed(1);
-                    irrText = `ความเสี่ยง (RR) = ${irr10.toFixed(2)} เท่า (เพิ่มขึ้น ${percent}%) เมื่อ PM2.5 เพิ่มทุกๆ 10 µg/m³`;
-                    if (irr10 >= 1.2) { badgeClass = 'risk-high'; badgeIcon = 'fa-triangle-exclamation'; riskLabel = 'สูง'; }
-                    else if (irr10 >= 1.05) { badgeClass = 'risk-med'; badgeIcon = 'fa-circle-exclamation'; riskLabel = 'ปานกลาง'; }
+                let xMean = sumX / n;
+                let yMean = sumY / n;
+                let sumXY = 0, sumX2 = 0;
+
+                dataPoints.forEach(p => {
+                    sumXY += (p.x - xMean) * (p.y - yMean);
+                    sumX2 += Math.pow(p.x - xMean, 2);
+                });
+
+                if (sumX2 === 0) {
+                    irrText = "ค่า PM2.5 คงที่ ไม่สามารถหาความสัมพันธ์ได้";
                 } else {
-                    irrText = `ไม่พบความสัมพันธ์เชิงบวกที่ชัดเจน (RR = ${irr10.toFixed(2)})`;
+                    let beta1 = sumXY / sumX2;
+                    let beta0 = yMean - beta1 * xMean;
+
+                    // หา Standard Error และ T-Stat เพื่อเช็คนัยสำคัญ (95% Confidence)
+                    let sse = 0;
+                    dataPoints.forEach(p => {
+                        let yHat = beta0 + beta1 * p.x;
+                        sse += Math.pow(p.y - yHat, 2);
+                    });
+                    
+                    let seBeta1 = Math.sqrt((sse / (n - 2)) / sumX2);
+                    let tStat = beta1 / seBeta1;
+                    let isSignificant = Math.abs(tStat) > 1.96; // เทียบเท่า P-value < 0.05
+
+                    let irr10 = Math.exp(beta1 * 10); // RR เมื่อฝุ่นเพิ่ม 10 หน่วย
+                    let percent = ((irr10 - 1) * 100).toFixed(1);
+
+                    if (isSignificant && beta1 > 0) {
+                        irrText = `ความเสี่ยง (RR) = ${irr10.toFixed(2)} เท่า (เพิ่มขึ้น ${percent}%) เมื่อ PM2.5 เพิ่มทุกๆ 10 µg/m³`;
+                        badgeClass = irr10 >= 1.1 ? 'risk-high' : 'risk-med';
+                        badgeIcon = irr10 >= 1.1 ? 'fa-triangle-exclamation' : 'fa-circle-exclamation';
+                        riskLabel = "มีนัยสำคัญ (สัมพันธ์เชิงบวก)";
+                    } else if (isSignificant && beta1 < 0) {
+                        irrText = `ความเสี่ยง (RR) = ${irr10.toFixed(2)} (ข้อมูลสวนทางกับค่าฝุ่นอย่างมีนัยสำคัญ)`;
+                    } else {
+                        irrText = `RR = ${irr10.toFixed(2)} เท่า (แต่ยังไม่มีนัยสำคัญทางสถิติที่ 95%)`;
+                    }
                 }
             }
 
