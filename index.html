@@ -498,6 +498,15 @@
     </style>
 </head>
 <body>
+    <!-- หน้าต่าง Login -->
+    <div id="loginOverlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #f3f4f6; display: flex; align-items: center; justify-content: center; z-index: 9999;">
+        <div style="background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); text-align: center; width: 100%; max-width: 320px;">
+            <h3 style="margin-bottom: 20px; color: #374151; font-family: sans-serif;">🔒 เข้าสู่ระบบ Dashboard</h3>
+            <input type="password" id="passInput" placeholder="กรอกรหัสผ่าน..." style="width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; font-size: 16px; outline: none;">
+            <button onclick="checkPassword()" style="width: 100%; padding: 12px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; margin-bottom: 10px; font-size: 16px; font-weight: bold;">ตกลง</button>
+            <button onclick="window.location.href='https://praetinee.github.io/JanWorkspace/'" style="width: 100%; padding: 12px; background: #6b7280; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px;">🏠 กลับ Workspace</button>
+        </div>
+    </div>
 
     <!-- Loading Overlay -->
     <div id="loadingOverlay">
@@ -1178,6 +1187,25 @@
             ];
             pmPatientChart.update();
         }
+        // ฟังก์ชันตรวจสอบรหัสผ่าน
+        function checkPassword() {
+            const pass = document.getElementById('passInput').value;
+            const correctPass = "0000"; // เปลี่ยนรหัสผ่านตรงนี้
+
+            if (pass === correctPass) {
+                document.getElementById('loginOverlay').style.display = 'none';
+            } else {
+                alert("รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่");
+                document.getElementById('passInput').value = '';
+            }
+        }
+
+        // รองรับการกด Enter ที่ช่องพิมพ์รหัสผ่าน
+        document.getElementById('passInput').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                checkPassword();
+            }
+        });
     </script>
 </body>
 </html>
